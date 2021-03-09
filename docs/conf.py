@@ -124,6 +124,9 @@ exclude_patterns = [
     'code-of-conduct.rst',
     'rules/periphery-rules.rst',
     'rules/device-details/*/index.rst',
+    'rules/summary/*-key.rst',
+    'rules/layers/*-key.rst',
+    'rules/hv/*-key.rst',
 ]
 
 # The name of the Pygments (syntax highlighting) style to use.
@@ -199,6 +202,7 @@ html_theme_options = {
 
     # Hide the symbiflow links
     'hide_symbiflow_links': True,
+    'license_url' : 'https://www.apache.org/licenses/LICENSE-2.0',
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,
@@ -309,6 +313,8 @@ epub_title = project
 # A list of files that should not be packed into the epub file.
 epub_exclude_files = ['search.html']
 
+# Enable the figures and numbers
+numfig = True
 
 # -- Extension configuration -------------------------------------------------
 

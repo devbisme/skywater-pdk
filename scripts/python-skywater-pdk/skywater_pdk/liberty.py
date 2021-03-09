@@ -31,12 +31,15 @@ from collections import defaultdict
 
 from typing import Tuple, List, Dict
 
+from math import frexp, log2
+
 from . import sizes
 from .utils import sortable_extracted_numbers
 
 
 debug = False
 
+LOG2_10 = log2(10)
 
 class TimingType(enum.IntFlag):
     """
@@ -151,19 +154,30 @@ def cell_corner_file(lib, cell_with_size, corner, corner_type: TimingType):
     return fname
 
 
-def top_corner_file(libname, corner, corner_type: TimingType):
+def top_corner_file(libname, corner, corner_type: TimingType, directory_prefix = "timing"):
     """
 
     >>> top_corner_file("sky130_fd_sc_hd", "ff_100C_1v65", TimingType.ccsnoise)
     'timing/sky130_fd_sc_hd__ff_100C_1v65_ccsnoise.lib.json'
     >>> top_corner_file("sky130_fd_sc_hd", "ff_100C_1v65", TimingType.basic)
     'timing/sky130_fd_sc_hd__ff_100C_1v65.lib.json'
+    >>> top_corner_file("sky130_fd_sc_hd", "ff_100C_1v65", TimingType.basic, "")
+    'sky130_fd_sc_hd__ff_100C_1v65.lib.json'
 
     """
     assert corner_type.singular, (libname, corner, corner_type, corner_type.types())
-    return "timing/{libname}__{corner}{corner_type}.lib.json".format(
-        libname=libname,
-        corner=corner, corner_type=corner_type.file)
+
+    if directory_prefix:
+      return "{prefix}/{libname}__{corner}{corner_type}.lib.json".format(
+          libname=libname,
+          corner=corner,
+          corner_type=corner_type.file,
+          prefix = directory_prefix)
+
+    return "{libname}__{corner}{corner_type}.lib.json".format(
+          libname=libname,
+          corner=corner,
+          corner_type=corner_type.file)
 
 
 def collect(library_dir) -> Tuple[Dict[str, TimingType], List[str]]:
@@ -307,9 +321,11 @@ def remove_ccsnoise_from_cell(data, cellname):
 remove_ccsnoise_from_library = remove_ccsnoise_from_dict
 
 
-def generate(library_dir, lib, corner, ocorner_type, icorner_type, cells):
-    top_fname = top_corner_file(lib, corner, ocorner_type).replace('.lib.json', '.lib')
-    top_fpath = os.path.join(library_dir, top_fname)
+def generate(library_dir, lib, corner, ocorner_type, icorner_type, cells, output_directory):
+    output_directory_prefix = None if output_directory else "timing"
+    top_fname = top_corner_file(lib, corner, ocorner_type, output_directory_prefix).replace('.lib.json', '.lib')
+    output_directory = output_directory if output_directory else library_dir
+    top_fpath = os.path.join(output_directory, top_fname)
 
     top_fout = open(top_fpath, "w")
     def top_write(lines):
@@ -753,6 +769,15 @@ def liberty_float(f):
     >>> liberty_float(1)
     '1.0000000000'
 
+    >>> liberty_float(1e9)
+    '1000000000.0'
+
+    >>> liberty_float(1e10)
+    '1.000000e+10'
+
+    >>> liberty_float(1e15)
+    '1.000000e+15'
+
     >>> liberty_float(True)
     Traceback (most recent call last):
         ...
@@ -779,36 +804,25 @@ def liberty_float(f):
 
     """
     try:
-        f2 = float(f)
+        r = float(f)
     except (ValueError, TypeError):
-        f2 = None
+        r = None
 
     if isinstance(f, bool):
-        f2 = None
+        r = None
 
-    if f is None or f2 != f:
+    if f is None or r != f:
         raise ValueError("%r is not a float" % f)
 
-    WIDTH = len(str(0.0083333333))
+    width = 11
 
-    s = json.dumps(f)
-    if 'e' in s:
-        a, b = s.split('e')
-        if '.' not in a:
-            a += '.'
-        while len(a)+len(b)+1 < WIDTH:
-            a += '0'
-        s = "%se%s" % (a, b)
-    elif '.' in s:
-        while len(s) < WIDTH:
-            s += '0'
+    mag = int(frexp(r)[1]/LOG2_10)
+    if mag > 9:
+        return f'%{width}e' % r
+    if mag < 0:
+        return f"%{width+1}.{width-1}f" % r
     else:
-        if len(s) < WIDTH:
-            s += '.'
-        while len(s) < WIDTH:
-            s += '0'
-    return s
-
+        return f"%{width+1}.{width-mag-1}f" % r
 
 LIBERTY_ATTRIBUTE_TYPES = {
     'boolean':  liberty_bool,
@@ -1090,6 +1104,11 @@ def main():
             help="Include verbose debug output on the console.",
             action='store_true',
             default=False)
+    parser.add_argument(
+            "-o",
+            "--output_directory",
+            help="Sets the parent directory of the liberty files",
+            default="")
 
     args = parser.parse_args()
     if args.debug:
@@ -1146,7 +1165,7 @@ def main():
         generate(
             libdir, lib,
             corner, output_corner_type, input_corner_type,
-            corner_cells,
+            corner_cells, args.output_directory
         )
     return 0
 
